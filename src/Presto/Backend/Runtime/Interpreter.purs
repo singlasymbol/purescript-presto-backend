@@ -38,6 +38,7 @@ import Control.Monad.State.Trans (get, modify, put, runStateT) as S
 import Control.Parallel (parSequence)
 import Data.Array (foldl, (:))
 import Data.Bifunctor (bimap)
+import Data.Either (Either(..))
 import Data.Exists (runExists)
 import Data.Maybe (Maybe(..))
 import Data.StrMap as StrMap
@@ -54,7 +55,7 @@ import Presto.Backend.Playback.Machine.Classless (withRunModeClassless)
 import Presto.Backend.Playback.Types (PlaybackError(PlaybackError), PlaybackErrorType(ForkedFlowRecordingsMissed), PlayerRuntime, RecorderRuntime, mkEntryDict)
 import Presto.Backend.Runtime.API (runAPIInteraction)
 import Presto.Backend.Runtime.Common (lift3, throwException', getDBConn', getKVDBConn')
-import Presto.Backend.Runtime.KVDBInterpreter (runKVDB)
+import Presto.Backend.Runtime.KVDBInterpreter (runKVDB, runEitherKvDB)
 import Presto.Backend.Runtime.Types (InterpreterMT, InterpreterMT', BackendRuntime(..), RunningMode(..))
 import Presto.Backend.Runtime.Types as X
 import Presto.Backend.SystemCommands (runSysCmd)
@@ -230,12 +231,15 @@ interpret brt@(BackendRuntime rt) (RunDB dbName dbAffF mockedDbActDictF rrItemDi
   pure $ next res
 
 interpret brt@(BackendRuntime rt) (GetKVDBConn dbName rrItemDict next) = do
-  res <- withRunModeClassless brt rrItemDict
-    (getKVDBConn' brt dbName)
-  pure $ next res
+  eitherConn <- getKVDBConn' brt dbName
+  case eitherConn of
+    Right conn -> do
+      res <- withRunModeClassless brt rrItemDict (pure conn)
+      pure $ next (Right res)
+    Left err -> pure $ next (Left err)
 
 interpret brt (RunKVDBEither dbName kvDBF mockedKvDbActDictF rrItemDict next) =
-  next <$> runKVDB brt dbName kvDBF mockedKvDbActDictF rrItemDict
+  next <$> runEitherKvDB brt dbName kvDBF mockedKvDbActDictF rrItemDict
 
 interpret brt (RunKVDBSimple dbName kvDBF mockedKvDbActDictF rrItemDict next) =
   next <$> runKVDB brt dbName kvDBF mockedKvDbActDictF rrItemDict
