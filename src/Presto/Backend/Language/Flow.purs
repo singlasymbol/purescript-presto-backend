@@ -774,14 +774,14 @@ setMessageHandler
   -> (forall eff. (String -> String -> Eff eff Unit))
   -> BackendFlow st rt (Either DBError Unit)
 setMessageHandler dbName f = do
-  wrap $ RunKVDBSimple dbName
-    (KVDB.setMessageHandler f)
+  res <- wrap $ RunKVDBSimple dbName
+    (toUnitEx <$> KVDB.setMessageHandler f)
     KVDBMock.mkKVDBActionDict
     (Playback.mkEntryDict
       ("dbName: " <> dbName <> ", setMessageHandler")
       $ Playback.mkRunKVDBSimpleEntry dbName "setMessageHandler" "")
     fromEitherEx
-
+  pure $ fromUnitEx <$> res
 
 parSequence :: ∀ st rt a. Array (BackendFlow st rt a) → BackendFlow st rt (Array (Either Error a))
 parSequence tbf = wrap $ ParSequence tbf id
